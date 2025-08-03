@@ -12,12 +12,14 @@ pipeline {
         CONTAINER_APP_PORT = 8080 // The port exposed by the Spring Boot app inside its container
         APP_DIR = "complete" // The directory containing the Spring Boot app and Dockerfile
     }
+    /*
     tools {
         // This assumes Docker is available in Jenkins' PATH or configured globally
         // If Jenkins cannot find 'docker', you might need to install 'Docker CLI' tool in Global Tool Configuration
         // or provide the full path to docker binary.
         // gradle 'DefaultGradle' // If you had Gradle installed as a Jenkins tool. Not strictly needed here as we use gradlew.
     }
+    */
     stages {
         stage('Clean Workspace') {
             steps {

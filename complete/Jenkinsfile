@@ -6,7 +6,7 @@ pipeline {
         APP_NAME = "gs-rest-service"
         DOCKER_IMAGE_NAME = "${APP_NAME}-app"
         DOCKER_CONTAINER_NAME = "${APP_NAME}-container"
-        HOST_APP_PORT = 8081
+        HOST_APP_PORT = 8080
         CONTAINER_APP_PORT = 8080
 
         // Your Dockerfile is in the root of the checked-out repo.

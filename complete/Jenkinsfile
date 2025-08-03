@@ -1,0 +1,93 @@
+// Jenkinsfile
+pipeline {
+    agent any // Jenkins will run this on any available agent (your master in this case)
+    options {
+        skipDefaultCheckout() // We'll do a specific checkout inside the stage to the 'complete' subdirectory
+    }
+    environment {
+        APP_NAME = "gs-rest-service"
+        DOCKER_IMAGE_NAME = "${APP_NAME}-app"
+        DOCKER_CONTAINER_NAME = "${APP_NAME}-container"
+        HOST_APP_PORT = 8081 // Using a different port to avoid conflict if Jenkins also uses 8080 for something else, or if the user wants to run multiple apps
+        CONTAINER_APP_PORT = 8080 // The port exposed by the Spring Boot app inside its container
+        APP_DIR = "complete" // The directory containing the Spring Boot app and Dockerfile
+    }
+    tools {
+        // This assumes Docker is available in Jenkins' PATH or configured globally
+        // If Jenkins cannot find 'docker', you might need to install 'Docker CLI' tool in Global Tool Configuration
+        // or provide the full path to docker binary.
+        // gradle 'DefaultGradle' // If you had Gradle installed as a Jenkins tool. Not strictly needed here as we use gradlew.
+    }
+    stages {
+        stage('Clean Workspace') {
+            steps {
+                cleanWs()
+            }
+        }
+        stage('Checkout Source Code') {
+            steps {
+                // Checkout directly into the expected APP_DIR within the workspace
+                dir("${APP_DIR}") {
+                    git branch: 'main', url: 'https://github.com/vinocloud/gs-rest-service' // Use your forked repo URL
+                }
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    dir("${APP_DIR}") { // Ensure we are in the correct directory for Dockerfile
+                        echo "Building Docker image: ${DOCKER_IMAGE_NAME}:latest"
+                        // Use sh command to interact with Docker daemon on the host
+                        sh "docker build -t ${DOCKER_IMAGE_NAME}:latest ."
+                        echo "Docker image built successfully."
+                    }
+                }
+            }
+        }
+        stage('Stop and Remove Old Container (if exists)') {
+            steps {
+                script {
+                    echo "Checking for existing container: ${DOCKER_CONTAINER_NAME}"
+                    // Use sh command to check and remove old container
+                    // docker ps -q -f name=... will return container ID if running/exists
+                    def containerId = sh(returnStdout: true, script: "docker ps -aq -f name=${DOCKER_CONTAINER_NAME}").trim()
+
+                    if (containerId) {
+                        echo "Found existing container ${DOCKER_CONTAINER_NAME} with ID: ${containerId}"
+                        try {
+                            sh "docker stop ${containerId}"
+                            echo "Stopped container ${DOCKER_CONTAINER_NAME}."
+                        } catch (Exception e) {
+                            echo "Could not stop container ${DOCKER_CONTAINER_NAME}. It might already be stopped."
+                        }
+                        try {
+                            sh "docker rm ${containerId}"
+                            echo "Removed container ${DOCKER_CONTAINER_NAME}."
+                        } catch (Exception e) {
+                            echo "Could not remove container ${DOCKER_CONTAINER_NAME}. It might have already been removed."
+                        }
+                    } else {
+                        echo "No existing container ${DOCKER_CONTAINER_NAME} found. Skipping stop/remove."
+                    }
+                }
+            }
+        }
+        stage('Run New Docker Container') {
+            steps {
+                script {
+                    echo "Running new Docker container: ${DOCKER_CONTAINER_NAME}"
+                    sh "docker run -d -p ${HOST_APP_PORT}:${CONTAINER_APP_PORT} --name ${DOCKER_CONTAINER_NAME} ${DOCKER_IMAGE_NAME}:latest"
+                    echo "Spring Boot application container is running on http://localhost:${HOST_APP_PORT}"
+                }
+            }
+        }
+    }
+    post {
+        always {
+            echo "Deployment pipeline finished."
+        }
+        failure {
+            echo "Deployment pipeline failed. Check logs for details."
+        }
+    }
+}

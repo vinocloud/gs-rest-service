@@ -1,14 +1,19 @@
 // Jenkinsfile
 pipeline {
     agent any
+
     environment {
         APP_NAME = "gs-rest-service"
         DOCKER_IMAGE_NAME = "${APP_NAME}-app"
         DOCKER_CONTAINER_NAME = "${APP_NAME}-container"
         HOST_APP_PORT = 8081
         CONTAINER_APP_PORT = 8080
-        APP_SUBDIRECTORY = "gs-rest-service" // This is the folder containing Dockerfile and 'complete'
-        GRADLE_PROJECT_SUBDIRECTORY = "complete" // This is the folder containing Gradle files within APP_SUBDIRECTORY
+
+        // Your Dockerfile is in the root of the checked-out repo.
+        // The Gradle project is under the 'complete' subdirectory.
+        // So, the Docker build context needs to be the root of the repo ('.').
+        // The Dockerfile itself is also at the root.
+        // The paths *inside* the Dockerfile will reference 'complete/...'
     }
 
     stages {
@@ -19,26 +24,29 @@ pipeline {
         }
         stage('Checkout Source Code') {
             steps {
-                git branch: 'main', url: 'https://github.com/vinocloud/gs-rest-service'
+                // Checkout the entire repository into the root of the workspace.
+                // This will place Dockerfile, complete/, etc. directly under the workspace.
+                git branch: 'main', url: 'https://github.com/vinocloud/gs-rest-service' // Use your forked repo URL
             }
         }
-        // ******* ADD THIS STAGE FOR DEBUGGING *******
         stage('Debug Workspace Structure') {
             steps {
                 echo "Listing workspace contents after checkout:"
                 sh 'ls -R' // List recursively to see the full tree
             }
         }
-        // ******* END DEBUGGING STAGE *******
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    dir("${APP_SUBDIRECTORY}") { // Change into the directory where Dockerfile is expected
-                        echo "Building Docker image: ${DOCKER_IMAGE_NAME}:latest from directory: ${pwd()}" // Use pwd() to confirm CWD
-                        sh "docker build -t ${DOCKER_IMAGE_NAME}:latest ."
-                        echo "Docker image built successfully."
-                    }
+                    // We are NOT changing the directory with 'dir()' here.
+                    // The Dockerfile is at the root of the workspace after checkout,
+                    // and the build context needs to be that root.
+                    echo "Building Docker image: ${DOCKER_IMAGE_NAME}:latest from directory: ${pwd()}"
+                    // The '.' specifies the current directory (workspace root) as the build context.
+                    // Docker will find 'Dockerfile' here.
+                    sh "docker build -t ${DOCKER_IMAGE_NAME}:latest ."
+                    echo "Docker image built successfully."
                 }
             }
         }

@@ -1,20 +1,14 @@
 // Jenkinsfile
 pipeline {
-    agent any // Jenkins will run this on any available agent
-    // No need for skipDefaultCheckout() as we want to checkout the whole repo normally
-
+    agent any
     environment {
         APP_NAME = "gs-rest-service"
         DOCKER_IMAGE_NAME = "${APP_NAME}-app"
         DOCKER_CONTAINER_NAME = "${APP_NAME}-container"
-        HOST_APP_PORT = 8081 // Using a different port to avoid conflict
-        CONTAINER_APP_PORT = 8080 // The port exposed by the Spring Boot app inside its container
-        // APP_SUBDIRECTORY is the path from the repository root to the 'gs-rest-service' folder
-        // where your Dockerfile is located AND which will be your Docker build context.
-        APP_SUBDIRECTORY = "gs-rest-service"
-        // GRADLE_PROJECT_SUBDIRECTORY is the path from APP_SUBDIRECTORY to the 'complete' folder
-        // where your Gradle files and source code are.
-        GRADLE_PROJECT_SUBDIRECTORY = "complete"
+        HOST_APP_PORT = 8081
+        CONTAINER_APP_PORT = 8080
+        APP_SUBDIRECTORY = "gs-rest-service" // This is the folder containing Dockerfile and 'complete'
+        GRADLE_PROJECT_SUBDIRECTORY = "complete" // This is the folder containing Gradle files within APP_SUBDIRECTORY
     }
 
     stages {
@@ -25,46 +19,26 @@ pipeline {
         }
         stage('Checkout Source Code') {
             steps {
-                // Checkout the entire repository into the root of the workspace
-                // This means your structure will be:
-                // JENKINS_WORKSPACE/your-git-repo/gs-rest-service/Dockerfile
-                // JENKINS_WORKSPACE/your-git-repo/gs-rest-service/complete/...
-                git branch: 'main', url: 'https://github.com/vinocloud/gs-rest-service' // Use your forked repo URL
+                git branch: 'main', url: 'https://github.com/vinocloud/gs-rest-service'
             }
         }
+        // ******* ADD THIS STAGE FOR DEBUGGING *******
+        stage('Debug Workspace Structure') {
+            steps {
+                echo "Listing workspace contents after checkout:"
+                sh 'ls -R' // List recursively to see the full tree
+            }
+        }
+        // ******* END DEBUGGING STAGE *******
+
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Navigate to the root of the checked-out repository first
-                    // Assuming 'your-git-repo' is the top-level folder name after checkout
-                    // If git checks out directly into workspace, remove the first dir()
-                    // Let's assume the repo content is directly in the workspace, so no 'your-git-repo' folder.
-                    // If it creates 'gs-rest-service' folder directly.
-
-                    // IMPORTANT: The 'docker build' command needs to be executed from a directory
-                    // where the build context path is valid.
-                    // The 'gs-rest-service' folder (which contains Dockerfile and 'complete' folder)
-                    // should be the build context.
-
-                    // Option 1: CD into the APP_SUBDIRECTORY and build from there
-                    // This is simpler for the 'docker build .' command
-                    dir("${APP_SUBDIRECTORY}") {
-                        echo "Building Docker image: ${DOCKER_IMAGE_NAME}:latest"
-                        // Here, '.' refers to 'gs-rest-service' directory, and Dockerfile is directly in it.
+                    dir("${APP_SUBDIRECTORY}") { // Change into the directory where Dockerfile is expected
+                        echo "Building Docker image: ${DOCKER_IMAGE_NAME}:latest from directory: ${pwd()}" // Use pwd() to confirm CWD
                         sh "docker build -t ${DOCKER_IMAGE_NAME}:latest ."
                         echo "Docker image built successfully."
                     }
-
-                    // Option 2 (Alternative - if you prefer not to use 'dir' for build context):
-                    // You would run this from the workspace root, specifying the context and Dockerfile path.
-                    // This option is more robust if the checkout behavior is tricky.
-                    /*
-                    echo "Building Docker image: ${DOCKER_IMAGE_NAME}:latest"
-                    // -f specifies the Dockerfile path relative to the current working directory (workspace root)
-                    // The last argument specifies the build context (path relative to current working directory)
-                    sh "docker build -t ${DOCKER_IMAGE_NAME}:latest -f ${APP_SUBDIRECTORY}/Dockerfile ${APP_SUBDIRECTORY}"
-                    echo "Docker image built successfully."
-                    */
                 }
             }
         }

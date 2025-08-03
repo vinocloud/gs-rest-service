@@ -1,62 +1,42 @@
 # Use a suitable JDK base image.
-# It's good practice to use a specific version rather than just '17-jdk-slim'.
-# For example, openjdk:17.0.10-jdk-slim (check for the latest patch version).
 FROM openjdk:17-jdk-slim
 
-# Set the primary application directory inside the container.
-# This will be the base for our application's files.
+# --- Builder Stage ---
+# Name this stage 'builder' so we can reference it later
+FROM openjdk:17-jdk-slim AS builder
+
+# Set the primary application directory inside the builder container
 WORKDIR /app
 
-# --- Copy Maven Project Files ---
-# Copy the entire 'complete' directory into '/app'.
-# This brings all Maven project files (pom.xml, mvnw, .mvn/, src/)
-# into /app/complete/ within the container, preserving the project structure.
+# Copy the entire 'complete' directory into '/app' within the builder stage.
 COPY complete /app/complete
 
-# --- Configure Maven Wrapper ---
-# Set the working directory *inside the container* to the root of your actual Maven project.
-# This is where `pom.xml`, `mvnw`, etc., are located after the COPY.
-# Subsequent commands like `./mvnw` will then be executed from this directory.
+# Set the working directory *inside the builder container* to the root of your Maven project.
 WORKDIR /app/complete
 
 # Grant execute permissions to the Maven wrapper script.
 RUN chmod +x mvnw
 
-# --- Certificate Import Section (Crucial for Repository Access) ---
-# IMPORTANT: Place your 'ca_cert.pem' (containing trusted CA certificates)
-# in the same directory as your Dockerfile on your host machine.
-# This file should contain the certificates needed to trust Maven Central,
-# Gradle Plugin Repository, or any corporate proxy CAs.
-
+# Certificate Import Section (only needed in the builder stage)
 COPY ca_cert.pem /tmp/ca_cert.pem
-
-# Import the certificates into the Java trust store (cacerts) inside the container.
-# The default cacerts password for OpenJDK is 'changeit'.
-# '-noprompt' prevents the command from asking for confirmation.
-# The '&& rm' part cleans up the temporary cert file after import.
 RUN keytool -import -alias custom_ca_cert -file /tmp/ca_cert.pem -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit -noprompt && \
     rm /tmp/ca_cert.pem
 
-# --- Maven Build Step ---
-# Run the Maven build to compile, test, and package the application into an executable JAR.
-# -B (or --batch-mode) runs Maven in non-interactive mode.
-# -DskipTests skips running unit/integration tests during the build.
-# 'package' goal will produce the JAR file.
+# Run the Maven build to create the executable JAR.
 RUN ./mvnw clean package -DskipTests
 
-# --- Prepare Final JAR for Execution ---
-# After building, the executable JAR is typically found in 'target/' directory
-# inside your Maven project's root (which is /app/complete in the container).
-# Change back to the main /app directory to store the final JAR there for clarity.
+# --- Runtime Stage ---
+# Use a smaller base image for the final application, as it only needs a JRE, not a full JDK.
+FROM openjdk:17-jre-slim # Using JRE for a smaller final image
+
+# Set the application directory in the final runtime container
 WORKDIR /app
 
-# Define the path to the executable JAR.
-# This uses a wildcard '*' to match the specific version in the JAR filename.
-# Example: 'complete/target/gs-rest-service-0.0.1-SNAPSHOT.jar'
-ARG JAR_FILE=complete/target/*.jar
-COPY ${JAR_FILE} app.jar
+# Copy the built JAR from the 'builder' stage into the final 'app' directory.
+# This is the crucial change: --from=builder specifies to copy from the previous stage.
+# The path 'app/complete/target/*.jar' is relative to the WORKDIR of the 'builder' stage,
+# which was '/app/complete', so the absolute path to the JAR within the builder stage is correct.
+COPY --from=builder /app/complete/target/*.jar app.jar
 
 # --- Define Container Entrypoint ---
-# This specifies the command to run when the Docker container starts.
-# It executes the Spring Boot application's JAR file.
 ENTRYPOINT ["java", "-jar", "app.jar"]

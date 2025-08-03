@@ -29,13 +29,6 @@ pipeline {
                 git branch: 'main', url: 'https://github.com/vinocloud/gs-rest-service' // Use your forked repo URL
             }
         }
-        stage('Debug Workspace Structure') {
-            steps {
-                echo "Listing workspace contents after checkout:"
-                sh 'ls -R' // List recursively to see the full tree
-            }
-        }
-
         stage('Build Docker Image') {
             steps {
                 script {

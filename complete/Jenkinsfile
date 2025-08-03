@@ -1,25 +1,22 @@
 // Jenkinsfile
 pipeline {
-    agent any // Jenkins will run this on any available agent (your master in this case)
-    options {
-        skipDefaultCheckout() // We'll do a specific checkout inside the stage to the 'complete' subdirectory
-    }
+    agent any // Jenkins will run this on any available agent
+    // No need for skipDefaultCheckout() as we want to checkout the whole repo normally
+
     environment {
         APP_NAME = "gs-rest-service"
         DOCKER_IMAGE_NAME = "${APP_NAME}-app"
         DOCKER_CONTAINER_NAME = "${APP_NAME}-container"
-        HOST_APP_PORT = 8081 // Using a different port to avoid conflict if Jenkins also uses 8080 for something else, or if the user wants to run multiple apps
+        HOST_APP_PORT = 8081 // Using a different port to avoid conflict
         CONTAINER_APP_PORT = 8080 // The port exposed by the Spring Boot app inside its container
-        APP_DIR = "complete" // The directory containing the Spring Boot app and Dockerfile
+        // APP_SUBDIRECTORY is the path from the repository root to the 'gs-rest-service' folder
+        // where your Dockerfile is located AND which will be your Docker build context.
+        APP_SUBDIRECTORY = "gs-rest-service"
+        // GRADLE_PROJECT_SUBDIRECTORY is the path from APP_SUBDIRECTORY to the 'complete' folder
+        // where your Gradle files and source code are.
+        GRADLE_PROJECT_SUBDIRECTORY = "complete"
     }
-    /*
-    tools {
-        // This assumes Docker is available in Jenkins' PATH or configured globally
-        // If Jenkins cannot find 'docker', you might need to install 'Docker CLI' tool in Global Tool Configuration
-        // or provide the full path to docker binary.
-        // gradle 'DefaultGradle' // If you had Gradle installed as a Jenkins tool. Not strictly needed here as we use gradlew.
-    }
-    */
+
     stages {
         stage('Clean Workspace') {
             steps {
@@ -28,21 +25,46 @@ pipeline {
         }
         stage('Checkout Source Code') {
             steps {
-                // Checkout directly into the expected APP_DIR within the workspace
-                dir("${APP_DIR}") {
-                    git branch: 'main', url: 'https://github.com/vinocloud/gs-rest-service' // Use your forked repo URL
-                }
+                // Checkout the entire repository into the root of the workspace
+                // This means your structure will be:
+                // JENKINS_WORKSPACE/your-git-repo/gs-rest-service/Dockerfile
+                // JENKINS_WORKSPACE/your-git-repo/gs-rest-service/complete/...
+                git branch: 'main', url: 'https://github.com/vinocloud/gs-rest-service' // Use your forked repo URL
             }
         }
         stage('Build Docker Image') {
             steps {
                 script {
-                    dir("${APP_DIR}") { // Ensure we are in the correct directory for Dockerfile
+                    // Navigate to the root of the checked-out repository first
+                    // Assuming 'your-git-repo' is the top-level folder name after checkout
+                    // If git checks out directly into workspace, remove the first dir()
+                    // Let's assume the repo content is directly in the workspace, so no 'your-git-repo' folder.
+                    // If it creates 'gs-rest-service' folder directly.
+
+                    // IMPORTANT: The 'docker build' command needs to be executed from a directory
+                    // where the build context path is valid.
+                    // The 'gs-rest-service' folder (which contains Dockerfile and 'complete' folder)
+                    // should be the build context.
+
+                    // Option 1: CD into the APP_SUBDIRECTORY and build from there
+                    // This is simpler for the 'docker build .' command
+                    dir("${APP_SUBDIRECTORY}") {
                         echo "Building Docker image: ${DOCKER_IMAGE_NAME}:latest"
-                        // Use sh command to interact with Docker daemon on the host
+                        // Here, '.' refers to 'gs-rest-service' directory, and Dockerfile is directly in it.
                         sh "docker build -t ${DOCKER_IMAGE_NAME}:latest ."
                         echo "Docker image built successfully."
                     }
+
+                    // Option 2 (Alternative - if you prefer not to use 'dir' for build context):
+                    // You would run this from the workspace root, specifying the context and Dockerfile path.
+                    // This option is more robust if the checkout behavior is tricky.
+                    /*
+                    echo "Building Docker image: ${DOCKER_IMAGE_NAME}:latest"
+                    // -f specifies the Dockerfile path relative to the current working directory (workspace root)
+                    // The last argument specifies the build context (path relative to current working directory)
+                    sh "docker build -t ${DOCKER_IMAGE_NAME}:latest -f ${APP_SUBDIRECTORY}/Dockerfile ${APP_SUBDIRECTORY}"
+                    echo "Docker image built successfully."
+                    */
                 }
             }
         }
@@ -50,8 +72,6 @@ pipeline {
             steps {
                 script {
                     echo "Checking for existing container: ${DOCKER_CONTAINER_NAME}"
-                    // Use sh command to check and remove old container
-                    // docker ps -q -f name=... will return container ID if running/exists
                     def containerId = sh(returnStdout: true, script: "docker ps -aq -f name=${DOCKER_CONTAINER_NAME}").trim()
 
                     if (containerId) {
@@ -60,7 +80,7 @@ pipeline {
                             sh "docker stop ${containerId}"
                             echo "Stopped container ${DOCKER_CONTAINER_NAME}."
                         } catch (Exception e) {
-                            echo "Could not stop container ${DOCKER_CONTAINER_NAME}. It might already be stopped."
+                            echo "Could not stop container ${DOCKER_CONTAINER_NAME}. It might already be stopped or not running."
                         }
                         try {
                             sh "docker rm ${containerId}"

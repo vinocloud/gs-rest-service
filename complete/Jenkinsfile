@@ -74,7 +74,7 @@ pipeline {
                 script {
                     echo "Running new Docker container: ${DOCKER_CONTAINER_NAME}"
                     sh "docker run -d -p ${HOST_APP_PORT}:${CONTAINER_APP_PORT} --name ${DOCKER_CONTAINER_NAME} ${DOCKER_IMAGE_NAME}:latest"
-                    echo "Spring Boot application container is running on http://localhost:${HOST_APP_PORT}"
+                    echo "Spring Boot application container is running and accessible at: http://localhost:${HOST_APP_PORT}/greeting?name=User"
                 }
             }
         }

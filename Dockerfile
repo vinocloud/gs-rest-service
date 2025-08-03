@@ -25,7 +25,7 @@ WORKDIR /app/complete
 COPY complete/src src/
 
 # Run the Gradle build task to create the executable JAR
-RUN ./gradlew bootJar
+RUN ../gradlew bootJar
 
 # After building, the JAR will be in /app/complete/build/libs/ (inside the container)
 # We need to copy it to the main /app directory for the final ENTRYPOINT
